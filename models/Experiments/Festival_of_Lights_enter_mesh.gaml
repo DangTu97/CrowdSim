@@ -1,0 +1,151 @@
+/**
+* Name: FestivalofLightsentermesh
+* Based on the internal empty template. 
+* Author: hdang
+* Tags: 
+*/
+
+
+model FestivalofLightsentermesh
+import '../global_variables.gaml'
+import '../Individual/individual.gaml'
+import '../Continuum_Crowds/high_density_zone.gaml'
+import '../env.gaml'
+import '../helpers/detection.gaml'
+/* Insert your model definition here */
+
+global {
+	float step <- STEP;
+	
+	file building_shape_file <- shape_file('../../includes/place_des_Terreaux/ok.shp');
+	file road_shape_file <- shape_file('../../includes/place_des_Terreaux/lines.shp');
+	file center_shape_file <- shape_file('../../includes/place_des_Terreaux/center.shp');
+	file init_space_shape_file <- shape_file('../../includes/place_des_Terreaux/init_space.shp');
+	
+	file nav_mesh_shape_file <- shape_file('../../includes/gen_map_official/mesh.shp');
+	file mesh_centroid_shape_file <- shape_file('../../includes/gen_map_official/node.shp');
+	
+	geometry shape <- envelope(building_shape_file);
+	geometry space <- copy(shape);
+	point group_target <- {60, 60};
+	
+	init {
+		
+		create building from: building_shape_file;
+//		create center from: center_shape_file;
+		
+		create nav_mesh from: nav_mesh_shape_file;
+		create mesh_centroid from: mesh_centroid_shape_file;
+
+		loop c over: mesh_centroid {
+			loop my_mesh over: nav_mesh {
+				if c.shape overlaps	my_mesh.shape {
+					my_mesh.centroid <- c.shape.location;
+				}
+			}	
+		}
+		
+		loop mesh_i over: nav_mesh {
+			loop mesh_j over: nav_mesh {
+				if (mesh_j != mesh_i) {
+					if mesh_i.shape intersects mesh_j.shape {
+						mesh_i.neighbors <- mesh_i.neighbors + [mesh_j];
+					}
+				}
+			}
+		}
+
+		// operational level
+		create walking_directly number: 1;
+		create following number: 1;
+		
+		// tatical level
+//		create best_adjacient_node number: 1;
+		create best_neighbor_mesh number: 1;
+		
+		create high_density_zone {
+			GRID_WIDTH <- 20;
+			GRID_HEIGHT <- 20;
+			boundary <- [49.0, 80, 45, 65];
+			//float x_min <- boundary[0];
+			//float y_min <- boundary[2];
+			CELL_SIZE_X <- (boundary[1] - boundary[0]) / GRID_WIDTH;
+		    CELL_SIZE_Y <- (boundary[3] - boundary[2]) / GRID_HEIGHT;
+		 	CELL_AREA <- CELL_SIZE_X * CELL_SIZE_Y;
+			nb_groups <- 1;
+
+			group_goals <- [1::[[0, 5]]];
+			exit_meshes <- [1::nav_mesh(76)];
+			do init_state;
+		}
+
+	}
+	
+	reflex init_people when: every(3#cycle) {
+		create individual number: 1 {
+			color <- #blue;
+			target <- {30, 35};
+			velocity <- (target - location) * rnd(0.3, MAXIMUM_SPEED)/ norm(target - location);
+			group_id <- 1;
+			
+			my_operational_behavior <- first(walking_directly);
+			my_tactical_behavior <- first(best_neighbor_mesh);
+			
+			//current_mesh <- one_of([nav_mesh(93), nav_mesh(102)]);
+			current_mesh <- one_of([nav_mesh(99)]);
+			
+			location <- any_location_in(current_mesh);
+			my_zone <- first(high_density_zone);
+		}
+	}
+	
+	
+	//when: cycle > 10 and every(100#cycle)
+//	reflex detect_high_density_zone when: cycle > 10 and every(100#cycle) {
+//		list<list<float>> my_data;
+//		loop ag over: individual {
+//			list<float> ag_coordinate <- [ag.location.x, ag.location.y];
+//			my_data <- my_data + [ag_coordinate];
+//		}
+//
+//		list<float> bound <- detect_dense_region(my_data, 1.0, 10, 100, 2.0);
+//		
+//		if length(bound) > 0 {
+//
+//			int x_min <- int(bound[0]);
+//			int x_max <- int(bound[1]);
+//			int y_min <- int(bound[2]);
+//			int y_max <- int(bound[3]);
+//		}
+//	}
+	
+	reflex write_status when: every(100#cycle) {
+		//write length(individual);
+	}
+	
+}
+
+
+species center {
+	aspect default {
+		draw shape color: #yellow;
+	}
+}
+
+species mesh_centroid {
+	aspect default {
+		draw circle(0.1) at: shape.location color: #red border: #green;
+	}
+}
+
+
+experiment exp parallel: true {
+	output {
+		display my_display {
+			species building;
+			species nav_mesh;
+			species high_density_zone;
+			species individual;
+		}
+	}
+}
